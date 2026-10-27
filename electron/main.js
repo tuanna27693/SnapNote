@@ -148,18 +148,11 @@ function syncOverlayPool() {
   }
 }
 
-// Cửa sổ chính bị ẩn lúc chụp (để không lọt vào ảnh) thì hiện lại khi kết thúc phiên chụp.
-let restoreEditor = false;
-
-function closeOverlays({ restore = false } = {}) {
+function closeOverlays() {
   for (const { win } of pool.values()) {
     if (win.isDestroyed() || !win.isVisible()) continue;
     win.hide();
     win.webContents.send('overlay-reset');
-  }
-  if (restore && restoreEditor) {
-    restoreEditor = false;
-    if (editor && !editor.isDestroyed()) editor.showInactive(); // không giành focus của app người dùng đang dùng
   }
 }
 
@@ -173,13 +166,9 @@ async function beginCapture() {
   try {
     const hadOverlay = [...pool.values()].some((e) => e.win.isVisible());
     closeOverlays();
-    const hadEditor = !!editor?.isVisible();
-    if (hadEditor) {
-      editor.hide();
-      restoreEditor = true;
-    }
-    // Chờ cửa sổ vừa ẩn biến mất khỏi khung hình rồi mới chụp.
-    if (hadOverlay || hadEditor) await sleep(150);
+    // Cửa sổ SnapNote giữ nguyên như mọi app khác, chụp thế nào thì ảnh ra thế đó.
+    // Chỉ chờ overlay của lần chụp trước (nếu còn) biến mất khỏi khung hình.
+    if (hadOverlay) await sleep(150);
 
     syncOverlayPool();
     const displays = screen.getAllDisplays();
@@ -230,7 +219,7 @@ ipcMain.handle('overlay-drawn', (e) => {
   dbg('overlay shown', Date.now() - t0, 'ms');
 });
 
-ipcMain.handle('cancel-selection', () => closeOverlays({ restore: true }));
+ipcMain.handle('cancel-selection', () => closeOverlays());
 
 // ---------- Cửa sổ chỉnh sửa đầy đủ (mở từ nút "Chỉnh sửa" trên overlay) ----------
 const editPayloads = new Map(); // webContents.id -> { image, annotations }
@@ -246,7 +235,7 @@ ipcMain.handle('open-editor', (_e, payload) => {
   editPayloads.set(id, payload);
   win.on('closed', () => editPayloads.delete(id));
   win.loadFile(path.join(root, 'dist', 'edit.html'));
-  closeOverlays({ restore: true });
+  closeOverlays();
 });
 
 ipcMain.handle('get-edit-payload', (e) => editPayloads.get(e.sender.id) ?? null);
