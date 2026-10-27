@@ -1,0 +1,56 @@
+html, body { height: 100%; }
+body {
+  display: flex; flex-direction: column;
+  color: var(--text); background: var(--bg);
+  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+.top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.top h1 { font-size: 15px; font-weight: 600; }
+main {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 24px; text-align: center;
+}
+button.big { height: 48px; padding: 0 28px; font-size: 16px; border-radius: 12px; }
+button.big svg { width: 22px; height: 22px; }
+.steps { margin-top: 8px; padding-left: 20px; text-align: left; color: var(--muted); line-height: 1.9; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+kbd {
+  padding: 2px 8px; border-radius: 4px; font: inherit;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+}
+
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  padding: 8px 16px; border-radius: 999px;
+  background: #111827; border: 1px solid var(--line);
+}
+
+dialog {
+  margin: auto; padding: 20px; width: 380px; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+dialog h3 { margin-bottom: 10px; font-size: 16px; }
+dialog h4 { margin-bottom: 4px; font-size: 13px; }
+dialog section { padding: 12px 0; border-top: 1px solid var(--line); }
+.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.update-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.update-row span { color: var(--muted); font-size: 12px; }
+.update-row .err { color: #f87171; }
+.update-row button { flex: none; background: var(--panel-2); border-color: var(--line); }
+#update-progress { height: 4px; margin-top: 8px; overflow: hidden; border-radius: 2px; background: var(--panel-2); }
+#update-progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+dialog { max-height: 92vh; overflow-y: auto; }
+dialog input#hotkey-input {
+  width: 100%; margin-top: 8px; padding: 10px; text-align: center;
+  color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; font: 15px/1 "Segoe UI", sans-serif;
+}
+dialog input#hotkey-input:focus { outline: 2px solid var(--accent); }
+.error { margin-top: 8px; min-height: 18px; color: #f87171; }
+.actions { display: flex; justify-content: flex-end; margin-top: 8px; }

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnapNote Overlay</title>
+    <link rel="stylesheet" href="/src/annotator.css" />
+    <link rel="stylesheet" href="/src/overlay.css" />
+  </head>
+  <body>
+    <img id="bg" alt="" draggable="false" />
+    <div id="dim"></div>
+    <div id="sel" hidden><span id="size"></span></div>
+    <div id="stage-host" hidden><div id="stage"></div></div>
+    <div id="toolbar" class="bar" hidden></div>
+    <div id="toast" hidden></div>
+    <div id="hint">Kéo chuột để chọn vùng · Enter: toàn màn hình · Esc / chuột phải: hủy</div>
+    <script type="module" src="/src/overlay.js"></script>
+  </body>
+</html>

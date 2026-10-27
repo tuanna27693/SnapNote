@@ -1,0 +1,62 @@
+:root {
+  --bg: #16171d;
+  --panel: #1f2028;
+  --panel-2: #2a2c37;
+  --line: #34364a;
+  --text: #e8e9f0;
+  --muted: #8b8da3;
+  --accent: #6366f1;
+  --accent-hover: #7c7ff5;
+}
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+
+.bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px;
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  cursor: default; user-select: none;
+}
+.group { display: flex; align-items: center; gap: 4px; }
+.sep { width: 1px; height: 24px; background: var(--line); }
+
+button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; min-width: 32px; padding: 0 8px;
+  color: var(--text); background: transparent;
+  border: 1px solid transparent; border-radius: 8px;
+  font: inherit; cursor: pointer;
+}
+button:hover { background: var(--panel-2); }
+button.active { background: var(--accent); color: #fff; }
+button.primary { background: var(--accent); color: #fff; padding: 0 12px; }
+button.primary:hover { background: var(--accent-hover); }
+button:disabled { opacity: 0.35; pointer-events: none; }
+svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+input[type="color"] {
+  width: 32px; height: 32px; padding: 2px; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+}
+#swatches { display: flex; gap: 4px; padding: 0 4px; }
+#swatches i {
+  width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; outline: 1px solid var(--line);
+}
+#swatches i:hover { transform: scale(1.15); }
+.num {
+  display: flex; align-items: center; gap: 4px; padding-left: 6px;
+  color: var(--muted); background: var(--panel-2); border-radius: 8px;
+}
+.num input {
+  width: 46px; height: 30px; color: var(--text); background: transparent;
+  border: 0; outline: 0; font: inherit; text-align: center;
+}
+
+/* Ô nhập chữ nổi trên canvas khi sửa Text / Callout */
+.canvas-editor {
+  position: fixed; z-index: 50; margin: 0; padding: 0;
+  overflow: hidden; resize: none; outline: 1px dashed var(--accent);
+  background: transparent; border: 0; line-height: 1.2;
+}

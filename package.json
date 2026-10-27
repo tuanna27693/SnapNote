@@ -1,0 +1,58 @@
+{
+  "name": "snapnote",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "dev": "vite build && electron .",
+    "dist": "vite build && electron-builder --win",
+    "release": "vite build && electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "konva": "^10.9.0"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "vite": "^8.3.5"
+  },
+  "main": "electron/main.js",
+  "description": "SnapNote - chup man hinh va chu thich",
+  "author": "BES Group <aibesgroup@besgroup.vn>",
+  "build": {
+    "appId": "vn.besgroup.snapnote",
+    "productName": "SnapNote",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "assets/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "tuanna27693",
+        "repo": "SnapNote"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tuanna27693/SnapNote.git"
+  }
+}

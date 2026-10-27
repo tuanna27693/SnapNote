@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnapNote</title>
+    <link rel="stylesheet" href="/src/annotator.css" />
+    <link rel="stylesheet" href="/src/editor.css" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>SnapNote</h1>
+      <button id="btn-settings" title="Cài đặt phím tắt" aria-label="Cài đặt">
+        <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <button id="btn-new" class="primary big">
+        <svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="2.5"/></svg>
+        Chụp màn hình
+      </button>
+      <p class="muted">hoặc nhấn <kbd id="hotkey-label"></kbd> bất cứ lúc nào</p>
+      <ol class="steps">
+        <li>Kéo chuột chọn vùng cần chụp.</li>
+        <li>Thanh chỉnh sửa hiện ngay bên dưới vùng chọn: vẽ hình, mũi tên, chữ, callout.</li>
+        <li>Bấm <b>Sao chép</b> hoặc <b>Lưu</b> (Ctrl+C / Ctrl+S).</li>
+      </ol>
+      <p class="muted small">Đóng cửa sổ này, SnapNote vẫn chạy ở khay hệ thống.</p>
+    </main>
+
+    <dialog id="settings">
+      <h3>Cài đặt</h3>
+
+      <section>
+        <h4>Phím tắt chụp màn hình</h4>
+        <p class="muted small">Bấm vào ô rồi nhấn tổ hợp phím mong muốn (ví dụ Ctrl+Shift+A, hoặc PrintScreen).</p>
+        <input id="hotkey-input" readonly />
+        <p id="hotkey-error" class="error"></p>
+      </section>
+
+      <section>
+        <h4>Hệ thống</h4>
+        <label class="switch"><input type="checkbox" id="opt-startup" /> Khởi chạy cùng Windows</label>
+        <p id="startup-note" class="muted small" hidden>Chỉ có tác dụng với bản đã cài đặt, không áp dụng khi chạy bằng npm start.</p>
+      </section>
+
+      <section>
+        <h4>Cập nhật</h4>
+        <label class="switch"><input type="checkbox" id="opt-autoupdate" /> Tự động kiểm tra cập nhật</label>
+        <div class="update-row">
+          <span id="update-text"></span>
+          <button type="button" id="btn-update"></button>
+        </div>
+        <div id="update-progress" hidden><i></i></div>
+      </section>
+
+      <div class="actions"><button type="button" id="btn-close-settings">Đóng</button></div>
+    </dialog>
+
+    <div id="toast" hidden></div>
+    <script type="module" src="/src/editor.js"></script>
+  </body>
+</html>
