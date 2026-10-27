@@ -12,6 +12,7 @@
     "release": "node scripts/build-native.mjs && vite build && electron-builder --win --publish always"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "electron-updater": "^6.8.11",
     "konva": "^10.9.0"
   },

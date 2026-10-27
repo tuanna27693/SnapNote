@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   recInfo: () => ipcRenderer.invoke('rec-info'),
   recPause: () => ipcRenderer.invoke('rec-pause'),
   recResume: () => ipcRenderer.invoke('rec-resume'),
+  recChooseDir: () => ipcRenderer.invoke('rec-choose-dir'),
+  recSetConfig: (cfg) => ipcRenderer.invoke('rec-set-config', cfg),
   recStop: () => ipcRenderer.invoke('rec-stop'),
   recToggle: () => ipcRenderer.invoke('rec-toggle'),
   recGetDir: () => ipcRenderer.invoke('rec-get-dir'),

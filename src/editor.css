@@ -14,6 +14,14 @@ main {
   gap: 12px; padding: 24px; text-align: center;
 }
 button.big { height: 48px; padding: 0 28px; font-size: 16px; border-radius: 12px; }
+.dir-row { display: flex; gap: 6px; margin: 6px 0 10px 24px; }
+.dir-row.off { opacity: 0.4; pointer-events: none; }
+.dir-row input {
+  flex: 1; min-width: 0; padding: 6px 8px; color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; font: 12px/1.2 "Segoe UI", sans-serif;
+}
+.dir-row button { flex: none; height: 30px; font-size: 12px; background: var(--panel-2); border-color: var(--line); }
+.switch + .switch { margin-top: 4px; }
 #btn-rec { background: var(--panel-2); border-color: var(--line); }
 #btn-rec.recording { background: #ef4444; border-color: #ef4444; color: #fff; }
 button.big svg { width: 22px; height: 22px; }

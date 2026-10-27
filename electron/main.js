@@ -275,6 +275,7 @@ ipcMain.handle('get-settings', () => ({
   version: app.getVersion(),
   packaged: app.isPackaged,
   update: updates.getStatus(),
+  recordDir: recorder.recordingsDir(),
 }));
 
 ipcMain.handle('set-setting', async (_e, key, value) => {

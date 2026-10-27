@@ -1,13 +1,14 @@
 import { BrowserWindow, Notification, app, desktopCapturer, dialog, ipcMain, screen, session, shell } from 'electron';
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { accessSync, constants, createWriteStream, mkdirSync } from 'node:fs';
+import { copyFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import * as settings from './settings.js';
 
-// Ghi âm thanh phát ra từ máy (loopback: tiếng người bên kia trong mọi app gọi) cộng micro, trộn thành một file.
-// Việc ghi chạy trong một cửa sổ ẩn vì MediaRecorder chỉ có ở trình duyệt; main chỉ ghi các mẩu dữ liệu ra đĩa.
+// Ghi âm thanh phát ra từ máy (loopback: tiếng người bên kia trong mọi app gọi) cộng micro, trộn thành một file MP3.
+// Việc ghi và mã hoá MP3 chạy trong một cửa sổ ẩn (cần API âm thanh của trình duyệt); main chỉ ghi các mẩu dữ liệu ra đĩa.
 let ctx = null; // { preload, root, onChange }
 // elapsedMs: thời gian đã ghi tính đến lần bắt đầu/tiếp tục gần nhất; resumedAt = 0 khi đang tạm dừng.
-const idle = () => ({ recording: false, paused: false, elapsedMs: 0, resumedAt: 0, file: '', mic: false });
+const idle = () => ({ recording: false, paused: false, elapsedMs: 0, resumedAt: 0, file: '', name: '', ask: false, mic: false });
 let state = idle();
 let recWin = null;
 let pillWin = null;
@@ -15,7 +16,31 @@ let out = null;
 let busy = false;
 
 const pad = (n) => String(n).padStart(2, '0');
-export const recordingsDir = () => path.join(app.getPath('documents'), 'SnapNote', 'Recordings');
+export const defaultDir = () => path.join(app.getPath('documents'), 'SnapNote', 'Recordings');
+/** Thư mục lưu theo cài đặt (rỗng = mặc định). */
+export const recordingsDir = () => settings.get('recordDir') || defaultDir();
+/** 'default': lưu thẳng vào thư mục cài đặt; 'ask': ghi tạm rồi hỏi nơi lưu khi dừng. */
+const saveMode = () => (settings.get('recordSaveMode') === 'ask' ? 'ask' : 'default');
+
+/** Kiểm tra thư mục có tạo và ghi được không; ném lỗi tiếng Việt nếu không. */
+function ensureWritable(dir) {
+  try {
+    mkdirSync(dir, { recursive: true });
+    accessSync(dir, constants.W_OK);
+  } catch {
+    throw new Error('Không ghi được vào thư mục này. Hãy chọn thư mục khác.');
+  }
+}
+
+/** Di chuyển file, kể cả sang ổ đĩa khác. */
+async function moveFile(from, to) {
+  try {
+    await rename(from, to);
+  } catch {
+    await copyFile(from, to);
+    await unlink(from);
+  }
+}
 export const isRecording = () => state.recording;
 export const getState = () => ({ ...state });
 
@@ -46,6 +71,26 @@ export function init(context) {
   ipcMain.handle('rec-pause', () => pause());
   ipcMain.handle('rec-resume', () => resume());
   ipcMain.handle('rec-get-dir', () => recordingsDir());
+  ipcMain.handle('rec-choose-dir', async (e) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+      title: 'Chọn thư mục lưu bản ghi âm',
+      defaultPath: recordingsDir(),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return canceled ? null : filePaths[0];
+  });
+  ipcMain.handle('rec-set-config', async (_e, cfg) => {
+    if (cfg.mode !== undefined) {
+      if (!['default', 'ask'].includes(cfg.mode)) throw new Error('Chế độ lưu không hợp lệ.');
+      await settings.set('recordSaveMode', cfg.mode);
+    }
+    if (cfg.dir !== undefined) {
+      const dir = String(cfg.dir).trim();
+      if (dir) ensureWritable(dir);
+      await settings.set('recordDir', dir === defaultDir() ? '' : dir);
+    }
+    return { mode: saveMode(), dir: recordingsDir() };
+  });
   ipcMain.handle('rec-open-folder', () => {
     mkdirSync(recordingsDir(), { recursive: true });
     return shell.openPath(recordingsDir());
@@ -78,11 +123,19 @@ export async function start() {
   if (state.recording || busy) return;
   busy = true;
   let file = '';
+  let name = '';
   try {
-    mkdirSync(recordingsDir(), { recursive: true });
+    const ask = saveMode() === 'ask';
     const d = new Date();
     const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-    file = path.join(recordingsDir(), `GhiAm_${stamp}.webm`);
+    name = `GhiAm_${stamp}.mp3`;
+    // Chế độ hỏi: ghi tạm vào thư mục tạm, hỏi nơi lưu khi dừng. Chế độ mặc định: ghi thẳng vào thư mục đã cấu hình.
+    if (ask) {
+      file = path.join(app.getPath('temp'), `snapnote-${stamp}.mp3`);
+    } else {
+      ensureWritable(recordingsDir());
+      file = path.join(recordingsDir(), name);
+    }
     out = createWriteStream(file);
 
     recWin = new BrowserWindow({
@@ -93,7 +146,7 @@ export async function start() {
     // userGesture = true để getDisplayMedia được phép chạy mà không cần người dùng bấm trong cửa sổ ẩn.
     const res = await recWin.webContents.executeJavaScript('window.__startRec()', true);
 
-    state = { recording: true, paused: false, elapsedMs: 0, resumedAt: Date.now(), file, mic: !!res?.mic };
+    state = { recording: true, paused: false, elapsedMs: 0, resumedAt: Date.now(), file, name, ask, mic: !!res?.mic };
     openPill();
     ctx.onChange(getState());
     if (!state.mic) {
@@ -134,15 +187,41 @@ export async function resume() {
 export async function stop() {
   if (!state.recording || busy) return null;
   busy = true;
-  const file = state.file;
+  const { file, name, ask } = state;
   try {
     await recWin?.webContents.executeJavaScript('window.__stopRec()', true);
   } catch {}
   await new Promise((resolve) => (out ? out.end(resolve) : resolve()));
   await cleanup();
   state = idle();
+  ctx.onChange(getState()); // ghi xong rồi: tắt chấm đỏ và thanh REC trước khi hiện hộp thoại
+
+  let finalPath = file;
+  let note = path.basename(file);
+  try {
+    if (ask) {
+      // Hỏi nơi lưu; nếu người dùng huỷ thì vẫn giữ bản ghi ở thư mục mặc định, không để mất.
+      mkdirSync(recordingsDir(), { recursive: true });
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Lưu bản ghi âm',
+        defaultPath: path.join(recordingsDir(), name),
+        filters: [{ name: 'MP3', extensions: ['mp3'] }],
+      });
+      if (canceled || !filePath) {
+        mkdirSync(defaultDir(), { recursive: true });
+        finalPath = path.join(defaultDir(), name);
+        note = `Bạn chưa chọn nơi lưu nên file nằm ở ${defaultDir()}`;
+      } else {
+        finalPath = filePath;
+        note = path.basename(filePath);
+      }
+      await moveFile(file, finalPath);
+    }
+  } catch (e) {
+    finalPath = file;
+    note = `Không chuyển được file, bản ghi còn ở ${file}`;
+  }
   busy = false;
-  ctx.onChange(getState());
-  notify('Đã lưu bản ghi âm', path.basename(file), () => shell.showItemInFolder(file));
-  return file;
+  notify('Đã lưu bản ghi âm', note, () => shell.showItemInFolder(finalPath));
+  return finalPath;
 }

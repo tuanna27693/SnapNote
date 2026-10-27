@@ -50,7 +50,14 @@
       <section>
         <h4>Ghi âm</h4>
         <p class="muted small">Ghi âm thanh phát ra từ máy (tiếng người bên kia) cộng micro của bạn. Nên đeo tai nghe để tránh tiếng vọng. Hãy báo cho mọi người biết bạn đang ghi âm.</p>
-        <p id="rec-dir" class="muted small"></p>
+        <label class="switch"><input type="radio" name="rec-mode" value="default" /> Lưu vào thư mục mặc định</label>
+        <div class="dir-row" id="rec-dir-row">
+          <input id="rec-dir" spellcheck="false" />
+          <button type="button" id="btn-rec-dir">Chọn…</button>
+          <button type="button" id="btn-rec-reset" title="Về thư mục mặc định">Đặt lại</button>
+        </div>
+        <label class="switch"><input type="radio" name="rec-mode" value="ask" /> Hỏi trước khi lưu (chọn nơi lưu mỗi lần ghi xong)</label>
+        <p id="rec-error" class="error"></p>
         <button type="button" id="btn-open-rec">Mở thư mục bản ghi</button>
       </section>
 

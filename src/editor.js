@@ -105,6 +105,7 @@ async function loadSettings() {
   $('opt-startup').checked = s.launchAtStartup;
   $('opt-autoupdate').checked = s.autoCheckUpdates;
   $('startup-note').hidden = s.packaged;
+  renderRecordConfig(s);
   renderUpdate(s.update);
 }
 
@@ -151,7 +152,35 @@ $('btn-rec').addEventListener('click', () => api.recToggle());
 $('btn-open-rec').addEventListener('click', () => api.recOpenFolder());
 api.onRecState(renderRec);
 api.recInfo().then(renderRec);
-api.recGetDir().then((d) => ($('rec-dir').textContent = 'Lưu tại: ' + d));
+
+// Nơi lưu bản ghi: thư mục mặc định (sửa được) hoặc hỏi mỗi lần ghi xong.
+function renderRecordConfig(s) {
+  document.querySelectorAll('input[name="rec-mode"]').forEach((r) => (r.checked = r.value === s.recordSaveMode));
+  $('rec-dir').value = s.recordDir;
+  $('rec-dir-row').classList.toggle('off', s.recordSaveMode === 'ask');
+}
+
+async function saveRecordConfig(cfg) {
+  const err = $('rec-error');
+  try {
+    const r = await api.recSetConfig(cfg);
+    err.textContent = '';
+    return r;
+  } catch (ex) {
+    err.textContent = String(ex.message ?? ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    return null;
+  } finally {
+    renderRecordConfig(await api.getSettings());
+  }
+}
+
+document.querySelectorAll('input[name="rec-mode"]').forEach((r) => r.addEventListener('change', () => saveRecordConfig({ mode: r.value })));
+$('rec-dir').addEventListener('change', (e) => saveRecordConfig({ dir: e.target.value }));
+$('btn-rec-dir').addEventListener('click', async () => {
+  const dir = await api.recChooseDir();
+  if (dir) saveRecordConfig({ dir });
+});
+$('btn-rec-reset').addEventListener('click', () => saveRecordConfig({ dir: '' }));
 
 $('btn-new').addEventListener('click', () => api.startCapture());
 $('btn-settings').addEventListener('click', async () => {

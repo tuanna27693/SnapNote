@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-const defaults = { hotkey: 'Ctrl+Shift+A', autoCheckUpdates: true, launchAtStartup: false };
+const defaults = { hotkey: 'Ctrl+Shift+A', autoCheckUpdates: true, launchAtStartup: false, recordSaveMode: 'default', recordDir: '' };
 const data = { ...defaults };
 const file = () => path.join(app.getPath('userData'), 'settings.json');
 
