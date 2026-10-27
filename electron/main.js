@@ -81,7 +81,7 @@ function onRecState(s) {
 // ---------- Cửa sổ editor ----------
 function createEditor() {
   editor = new BrowserWindow({
-    width: 560, height: 700, minWidth: 460, minHeight: 640,
+    width: 560, height: 820, minWidth: 460, minHeight: 640,
     show: false, backgroundColor: '#16171d', title: 'SnapNote',
     icon: path.join(root, 'assets', 'icon.png'),
     webPreferences: { preload },
@@ -148,11 +148,18 @@ function syncOverlayPool() {
   }
 }
 
-function closeOverlays() {
+// Cửa sổ chính bị ẩn lúc chụp (để không lọt vào ảnh) thì hiện lại khi kết thúc phiên chụp.
+let restoreEditor = false;
+
+function closeOverlays({ restore = false } = {}) {
   for (const { win } of pool.values()) {
     if (win.isDestroyed() || !win.isVisible()) continue;
     win.hide();
     win.webContents.send('overlay-reset');
+  }
+  if (restore && restoreEditor) {
+    restoreEditor = false;
+    if (editor && !editor.isDestroyed()) editor.showInactive(); // không giành focus của app người dùng đang dùng
   }
 }
 
@@ -167,7 +174,10 @@ async function beginCapture() {
     const hadOverlay = [...pool.values()].some((e) => e.win.isVisible());
     closeOverlays();
     const hadEditor = !!editor?.isVisible();
-    if (hadEditor) editor.hide();
+    if (hadEditor) {
+      editor.hide();
+      restoreEditor = true;
+    }
     // Chờ cửa sổ vừa ẩn biến mất khỏi khung hình rồi mới chụp.
     if (hadOverlay || hadEditor) await sleep(150);
 
@@ -220,7 +230,7 @@ ipcMain.handle('overlay-drawn', (e) => {
   dbg('overlay shown', Date.now() - t0, 'ms');
 });
 
-ipcMain.handle('cancel-selection', () => closeOverlays());
+ipcMain.handle('cancel-selection', () => closeOverlays({ restore: true }));
 
 // ---------- Cửa sổ chỉnh sửa đầy đủ (mở từ nút "Chỉnh sửa" trên overlay) ----------
 const editPayloads = new Map(); // webContents.id -> { image, annotations }
@@ -236,7 +246,7 @@ ipcMain.handle('open-editor', (_e, payload) => {
   editPayloads.set(id, payload);
   win.on('closed', () => editPayloads.delete(id));
   win.loadFile(path.join(root, 'dist', 'edit.html'));
-  closeOverlays();
+  closeOverlays({ restore: true });
 });
 
 ipcMain.handle('get-edit-payload', (e) => editPayloads.get(e.sender.id) ?? null);

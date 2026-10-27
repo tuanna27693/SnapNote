@@ -40,7 +40,6 @@ async function recordHotkey() {
   }
 }
 $('hotkey-input').addEventListener('click', recordHotkey);
-$('settings').addEventListener('close', () => api.cancelRecordHotkey());
 
 // ---------- Khởi chạy cùng Windows & cập nhật ----------
 let version = '';
@@ -112,7 +111,6 @@ async function loadSettings() {
 $('opt-startup').addEventListener('change', (e) => api.setSetting('launchAtStartup', e.target.checked));
 $('opt-autoupdate').addEventListener('change', (e) => api.setSetting('autoCheckUpdates', e.target.checked));
 $('btn-update').addEventListener('click', () => updateAction?.());
-$('btn-close-settings').addEventListener('click', () => $('settings').close());
 api.onUpdateStatus(renderUpdate);
 
 async function chooseHotkey(combo) {
@@ -183,10 +181,25 @@ $('btn-rec-dir').addEventListener('click', async () => {
 $('btn-rec-reset').addEventListener('click', () => saveRecordConfig({ dir: '' }));
 
 $('btn-new').addEventListener('click', () => api.startCapture());
+// ---------- Chuyển giữa trang chủ và trang cài đặt ----------
+function showView(name) {
+  const settings = name === 'settings';
+  $('view-settings').hidden = !settings;
+  $('view-home').hidden = settings;
+  $('btn-back').hidden = !settings;
+  $('btn-settings').hidden = settings;
+  $('page-title').textContent = settings ? 'Cài đặt' : 'SnapNote';
+  if (!settings) api.cancelRecordHotkey(); // rời trang thì dừng ghi phím tắt đang chờ
+}
+
+$('btn-back').addEventListener('click', () => showView('home'));
 $('btn-settings').addEventListener('click', async () => {
   $('hotkey-error').textContent = '';
   await loadSettings();
-  $('settings').showModal();
+  showView('settings');
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('view-settings').hidden && !recording) showView('home');
 });
 
 refreshHotkeyLabel();

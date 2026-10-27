@@ -9,6 +9,7 @@ body {
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
 }
 .top h1 { font-size: 15px; font-weight: 600; }
+.top .left { display: flex; align-items: center; gap: 6px; }
 main {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; padding: 24px; text-align: center;
@@ -39,14 +40,12 @@ kbd {
   background: #111827; border: 1px solid var(--line);
 }
 
-dialog {
-  margin: auto; padding: 20px; width: 380px; color: var(--text);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-}
-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-dialog h3 { margin-bottom: 10px; font-size: 16px; }
-dialog h4 { margin-bottom: 4px; font-size: 13px; }
-dialog section { padding: 12px 0; border-top: 1px solid var(--line); }
+/* Trang cài đặt (thay cho hộp thoại): cuộn bằng con lăn chuột, ẩn thanh cuộn */
+.page { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 24px; scrollbar-width: none; }
+.page::-webkit-scrollbar { display: none; }
+.page section { max-width: 520px; margin: 0 auto; padding: 16px 0; border-top: 1px solid var(--line); }
+.page section:first-child { border-top: 0; }
+.page h4 { margin-bottom: 4px; font-size: 13px; }
 .presets { display: flex; gap: 8px; margin: 8px 0; }
 .presets button { height: 28px; font-size: 12px; background: var(--panel-2); border-color: var(--line); }
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -57,14 +56,12 @@ dialog section { padding: 12px 0; border-top: 1px solid var(--line); }
 .update-row button { flex: none; background: var(--panel-2); border-color: var(--line); }
 #update-progress { height: 4px; margin-top: 8px; overflow: hidden; border-radius: 2px; background: var(--panel-2); }
 #update-progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
-dialog { max-height: 92vh; overflow-y: auto; }
-dialog input#hotkey-input {
+input#hotkey-input {
   width: 100%; margin-top: 8px; padding: 10px; text-align: center;
   color: var(--text); background: var(--panel-2);
   border: 1px solid var(--line); border-radius: 8px; font: 15px/1 "Segoe UI", sans-serif;
 }
-dialog input#hotkey-input { cursor: pointer; }
-dialog input#hotkey-input.recording { outline: 2px solid var(--accent); color: var(--muted); }
-dialog input#hotkey-input:focus { outline: 2px solid var(--accent); }
+input#hotkey-input { cursor: pointer; }
+input#hotkey-input.recording { outline: 2px solid var(--accent); color: var(--muted); }
+input#hotkey-input:focus { outline: 2px solid var(--accent); }
 .error { margin-top: 8px; min-height: 18px; color: #f87171; }
-.actions { display: flex; justify-content: flex-end; margin-top: 8px; }
