@@ -1,14 +1,15 @@
 {
   "name": "snapnote",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
+    "build:native": "node scripts/build-native.mjs",
     "build": "vite build",
-    "start": "vite build && electron .",
-    "dev": "vite build && electron .",
-    "dist": "vite build && electron-builder --win",
-    "release": "vite build && electron-builder --win --publish always"
+    "start": "node scripts/build-native.mjs && vite build && electron .",
+    "dev": "node scripts/build-native.mjs && vite build && electron .",
+    "dist": "node scripts/build-native.mjs && vite build && electron-builder --win",
+    "release": "node scripts/build-native.mjs && vite build && electron-builder --win --publish always"
   },
   "dependencies": {
     "electron-updater": "^6.8.11",
@@ -49,6 +50,12 @@
         "provider": "github",
         "owner": "tuanna27693",
         "repo": "SnapNote"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "native/keyhook.exe",
+        "to": "keyhook.exe"
       }
     ]
   },

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as settings from './settings.js';
 import * as updates from './updates.js';
+import * as hotkeys from './hotkey.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const preload = path.join(root, 'electron', 'preload.cjs');
@@ -17,7 +18,6 @@ let editor = null;
 let tray = null;
 let quitting = false;
 let hotkey = DEFAULT_HOTKEY;
-const overlays = new Map(); // webContents.id -> { win, image: NativeImage }
 
 // ---------- Cài đặt ----------
 async function loadSettings() {
@@ -33,14 +33,7 @@ function applyLoginItem() {
   app.setLoginItemSettings({ openAtLogin: !!settings.get('launchAtStartup'), args: ['--hidden'] });
 }
 
-function registerHotkey(acc) {
-  globalShortcut.unregisterAll();
-  try {
-    return globalShortcut.register(acc, beginCapture);
-  } catch {
-    return false;
-  }
-}
+const registerHotkey = (acc) => hotkeys.apply(acc, beginCapture);
 
 // ---------- Cửa sổ editor ----------
 function createEditor() {
@@ -72,22 +65,70 @@ function showEditor() {
 }
 
 // ---------- Chụp màn hình ----------
-function closeOverlays() {
-  for (const { win } of overlays.values()) if (!win.isDestroyed()) win.destroy();
-  overlays.clear();
+// Mỗi màn hình có sẵn một cửa sổ overlay ẩn (đã nạp trang) nên bấm phím tắt là hiện gần như ngay:
+// chỉ còn chụp -> gửi ảnh thô -> hiện, không phải tạo cửa sổ hay mã hoá/giải mã PNG.
+const dbg = (...a) => process.env.SNAP_DEBUG && console.log('[snap]', ...a);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const pool = new Map(); // display.id -> { win, display }
+let t0 = 0;
+let capturing = false;
+let focusWin = null;
+
+function createOverlay(display) {
+  const win = new BrowserWindow({
+    ...display.bounds, frame: false, show: false, resizable: false, movable: false,
+    skipTaskbar: true, alwaysOnTop: true, fullscreenable: false, enableLargerThanScreen: true,
+    backgroundColor: '#000', hasShadow: false,
+    webPreferences: { preload, backgroundThrottling: false },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.loadFile(path.join(root, 'dist', 'overlay.html'));
+  if (process.env.SNAP_DEBUG) win.webContents.on('console-message', (e) => dbg('overlay:', e.message));
+  win.on('closed', () => {
+    if (pool.get(display.id)?.win === win) pool.delete(display.id);
+  });
+  pool.set(display.id, { win, display });
 }
 
-let capturing = false;
+/** Giữ đúng một overlay cho mỗi màn hình hiện có (gọi khi khởi động và khi cắm/rút màn hình). */
+function syncOverlayPool() {
+  const displays = screen.getAllDisplays();
+  const ids = new Set(displays.map((d) => d.id));
+  for (const [id, entry] of [...pool]) if (!ids.has(id)) entry.win.destroy();
+  for (const d of displays) {
+    const entry = pool.get(d.id);
+    if (!entry) createOverlay(d);
+    else {
+      entry.display = d;
+      if (!entry.win.isVisible()) entry.win.setBounds(d.bounds);
+    }
+  }
+}
+
+function closeOverlays() {
+  for (const { win } of pool.values()) {
+    if (win.isDestroyed() || !win.isVisible()) continue;
+    win.hide();
+    win.webContents.send('overlay-reset');
+  }
+}
+
+const loaded = (win) =>
+  win.webContents.isLoading() ? new Promise((r) => win.webContents.once('did-finish-load', r)) : Promise.resolve();
+
 async function beginCapture() {
   if (capturing) return;
   capturing = true;
+  t0 = Date.now();
   try {
-    const hadOverlay = overlays.size > 0;
+    const hadOverlay = [...pool.values()].some((e) => e.win.isVisible());
     closeOverlays();
     const hadEditor = !!editor?.isVisible();
     if (hadEditor) editor.hide();
-    // Chờ cửa sổ (overlay cũ / cửa sổ chính) biến mất khỏi khung hình rồi mới chụp.
-    if (hadOverlay || hadEditor) await new Promise((r) => setTimeout(r, 220));
+    // Chờ cửa sổ vừa ẩn biến mất khỏi khung hình rồi mới chụp.
+    if (hadOverlay || hadEditor) await sleep(150);
+
+    syncOverlayPool();
     const displays = screen.getAllDisplays();
     const size = displays.reduce(
       (m, d) => ({
@@ -97,35 +138,24 @@ async function beginCapture() {
       { width: 1, height: 1 },
     );
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+    dbg('getSources done', Date.now() - t0, 'ms');
     const cursor = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    let focusWin = null;
+    focusWin = null;
 
     for (const [i, d] of displays.entries()) {
+      const entry = pool.get(d.id);
       const src = sources.find((s) => s.display_id === String(d.id)) ?? sources[i];
-      if (!src) continue;
+      if (!entry || !src) continue;
       let image = src.thumbnail;
       const pw = Math.round(d.size.width * d.scaleFactor);
       const ph = Math.round(d.size.height * d.scaleFactor);
       const cur = image.getSize();
       if (cur.width !== pw || cur.height !== ph) image = image.resize({ width: pw, height: ph, quality: 'best' });
-
-      const win = new BrowserWindow({
-        ...d.bounds, frame: false, show: false, resizable: false, movable: false,
-        skipTaskbar: true, alwaysOnTop: true, fullscreenable: false, enableLargerThanScreen: true,
-        backgroundColor: '#000', hasShadow: false,
-        webPreferences: { preload },
-      });
-      win.setAlwaysOnTop(true, 'screen-saver');
-      overlays.set(win.webContents.id, { win, image });
-      win.loadFile(path.join(root, 'dist', 'overlay.html'));
-      win.once('ready-to-show', () => {
-        win.setBounds(d.bounds); // đặt lại để tránh lệch khi màn hình khác DPI
-        win.show();
-        if (d.id === cursor.id) win.focus();
-      });
-      if (d.id === cursor.id) focusWin = win;
+      const { width, height } = image.getSize();
+      await loaded(entry.win);
+      entry.win.webContents.send('overlay-capture', { width, height, bitmap: image.toBitmap() }); // BGRA
+      if (d.id === cursor.id) focusWin = entry.win;
     }
-    focusWin?.focus();
   } catch (e) {
     console.error('Chụp thất bại:', e);
     closeOverlays();
@@ -136,7 +166,16 @@ async function beginCapture() {
 
 ipcMain.handle('start-capture', () => beginCapture());
 
-ipcMain.handle('get-capture-image', (e) => overlays.get(e.sender.id)?.image.toPNG());
+// Overlay vẽ xong ảnh thì mới hiện, tránh nháy khung đen/ảnh cũ.
+ipcMain.handle('overlay-drawn', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const entry = [...pool.values()].find((x) => x.win === win);
+  if (!entry) return;
+  win.setBounds(entry.display.bounds); // đặt lại để tránh lệch khi màn hình khác DPI
+  win.show();
+  if (win === focusWin) win.focus();
+  dbg('overlay shown', Date.now() - t0, 'ms');
+});
 
 ipcMain.handle('cancel-selection', () => closeOverlays());
 
@@ -234,9 +273,15 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', beginCapture);
 
     createEditor();
+
+    syncOverlayPool();
+    for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, syncOverlayPool);
   });
 
   app.on('before-quit', () => { quitting = true; });
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
+    hotkeys.dispose();
+  });
   app.on('window-all-closed', () => {}); // giữ app chạy nền trong khay
 }

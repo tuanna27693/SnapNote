@@ -2,7 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   startCapture: () => ipcRenderer.invoke('start-capture'),
-  getCaptureImage: () => ipcRenderer.invoke('get-capture-image'),
+  overlayDrawn: () => ipcRenderer.invoke('overlay-drawn'),
+  onOverlayCapture: (cb) => ipcRenderer.on('overlay-capture', (_e, d) => cb(d)),
+  onOverlayReset: (cb) => ipcRenderer.on('overlay-reset', () => cb()),
   cancelSelection: () => ipcRenderer.invoke('cancel-selection'),
   openEditor: (payload) => ipcRenderer.invoke('open-editor', payload),
   getEditPayload: () => ipcRenderer.invoke('get-edit-payload'),

@@ -9,22 +9,33 @@ const sizeLabel = $('size');
 const host = $('stage-host');
 const toolbar = $('toolbar');
 
-let blobUrl = null;
+const ctx = bg.getContext('2d');
 let start = null;
 let phase = 'select'; // 'select' (đang kéo chọn vùng) | 'edit' (đã chọn, đang chú thích)
 
-(async () => {
-  const buf = await api.getCaptureImage();
-  blobUrl = URL.createObjectURL(new Blob([buf], { type: 'image/png' }));
-  bg.src = blobUrl;
-})();
+// Cửa sổ overlay được tạo sẵn và ẩn; mỗi lần chụp, main gửi ảnh thô (BGRA) sang đây để vẽ rồi mới hiện.
+api.onOverlayCapture(({ width, height, bitmap }) => {
+  reset();
+  const src = new Uint32Array(bitmap.buffer, bitmap.byteOffset, width * height);
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  const dst = new Uint32Array(pixels.buffer);
+  for (let i = 0; i < src.length; i++) {
+    const v = src[i];
+    dst[i] = 0xff000000 | ((v & 0xff) << 16) | (v & 0xff00) | ((v >>> 16) & 0xff); // BGRA -> RGBA
+  }
+  bg.width = width;
+  bg.height = height;
+  ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
+  api.overlayDrawn();
+});
+api.onOverlayReset(() => reset());
 
 const close = () => api.cancelSelection();
 
 // Toạ độ chuột (CSS px) -> toạ độ pixel thật của ảnh, bất kể DPI.
 function toImage(r) {
-  const sx = bg.naturalWidth / window.innerWidth;
-  const sy = bg.naturalHeight / window.innerHeight;
+  const sx = bg.width / window.innerWidth;
+  const sy = bg.height / window.innerHeight;
   return { x: Math.round(r.x * sx), y: Math.round(r.y * sy), w: Math.round(r.w * sx), h: Math.round(r.h * sy) };
 }
 

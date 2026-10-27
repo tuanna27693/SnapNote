@@ -27,8 +27,10 @@ function comboFromEvent(e) {
   return { combo: [...mods, key].join('+') };
 }
 
+const showKey = (hk) => hk.replace(/\bSuper\b/g, 'Win');
+
 async function refreshHotkeyLabel() {
-  const hk = await api.getHotkey();
+  const hk = showKey(await api.getHotkey());
   $('hotkey-label').textContent = hk;
   $('hotkey-input').value = hk;
 }
@@ -39,14 +41,7 @@ $('hotkey-input').addEventListener('keydown', async (e) => {
   if (!r) return;
   const err = $('hotkey-error');
   if (r.error) { err.textContent = r.error; return; }
-  try {
-    await api.setHotkey(r.combo);
-    err.textContent = '';
-    await refreshHotkeyLabel();
-    toast('Đã đổi phím tắt thành ' + r.combo);
-  } catch (ex) {
-    err.textContent = String(ex.message ?? ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-  }
+  await chooseHotkey(r.combo);
 });
 
 // ---------- Khởi chạy cùng Windows & cập nhật ----------
@@ -120,6 +115,19 @@ $('opt-autoupdate').addEventListener('change', (e) => api.setSetting('autoCheckU
 $('btn-update').addEventListener('click', () => updateAction?.());
 $('btn-close-settings').addEventListener('click', () => $('settings').close());
 api.onUpdateStatus(renderUpdate);
+
+async function chooseHotkey(combo) {
+  const err = $('hotkey-error');
+  try {
+    await api.setHotkey(combo);
+    err.textContent = '';
+    await refreshHotkeyLabel();
+    toast('Đã đổi phím tắt thành ' + showKey(combo));
+  } catch (ex) {
+    err.textContent = String(ex.message ?? ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  }
+}
+document.querySelectorAll('.presets button').forEach((b) => b.addEventListener('click', () => chooseHotkey(b.dataset.hotkey)));
 
 $('btn-new').addEventListener('click', () => api.startCapture());
 $('btn-settings').addEventListener('click', async () => {
