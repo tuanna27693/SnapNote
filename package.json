@@ -39,6 +39,7 @@
       "icon": "assets/icon.ico"
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false
