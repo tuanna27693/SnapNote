@@ -16,6 +16,15 @@ const NAMED = {
   insert: 0x2d, delete: 0x2e, printscreen: 0x2c, pause: 0x13,
 };
 
+/** Mã phím ảo -> tên phím theo cách Electron đọc, hoặc null nếu không hỗ trợ. */
+function nameOf(vk) {
+  if ((vk >= 0x41 && vk <= 0x5a) || (vk >= 0x30 && vk <= 0x39)) return String.fromCharCode(vk);
+  if (vk >= 0x70 && vk <= 0x87) return 'F' + (vk - 0x6f);
+  const hit = Object.entries(NAMED).find(([, v]) => v === vk);
+  if (!hit) return null;
+  return { printscreen: 'PrintScreen', pageup: 'PageUp', pagedown: 'PageDown', return: 'Enter' }[hit[0]] ?? hit[0][0].toUpperCase() + hit[0].slice(1);
+}
+
 /** Tên phím -> mã phím ảo Windows, hoặc null nếu không hỗ trợ. */
 function vkOf(name) {
   if (/^[a-z]$/i.test(name)) return name.toUpperCase().charCodeAt(0);
@@ -89,4 +98,51 @@ export function apply(acc, onTrigger) {
   }
 }
 
-export const dispose = stopHelper;
+let recorder = null;
+
+/**
+ * Chờ người dùng bấm một tổ hợp phím rồi trả về chuỗi như "Shift+Super+A" (null nếu bấm Esc / hết giờ).
+ * Tạm dừng phím tắt đang dùng để bấm thử không làm kích hoạt chụp.
+ */
+export function recordCombo(timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    cancelRecord();
+    stopHelper();
+    globalShortcut.unregisterAll();
+    const exe = helperPath();
+    if (!existsSync(exe)) return reject(new Error('Thiếu keyhook.exe, không ghi được phím tắt.'));
+    const child = spawn(exe, ['record'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    recorder = child;
+    let done = false;
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (recorder === child) recorder = null;
+      child.kill();
+      fn(value);
+    };
+    const timer = setTimeout(() => finish(resolve, null), timeoutMs);
+    child.on('error', (e) => finish(reject, e));
+    child.on('exit', () => finish(resolve, null));
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      for (const line of chunk.split(/\r?\n/)) {
+        if (line === 'CANCEL') return finish(resolve, null);
+        const m = /^KEY (\d) (\d) (\d) (\d) (\d+)$/.exec(line);
+        if (!m) continue;
+        const name = nameOf(Number(m[5]));
+        if (!name) return finish(reject, new Error('Phím này chưa được hỗ trợ làm phím tắt.'));
+        const mods = [m[2] === '1' && 'Ctrl', m[3] === '1' && 'Alt', m[4] === '1' && 'Shift', m[1] === '1' && 'Super'].filter(Boolean);
+        return finish(resolve, [...mods, name].join('+'));
+      }
+    });
+  });
+}
+
+export const cancelRecord = () => recorder?.kill();
+
+export const dispose = () => {
+  cancelRecord();
+  stopHelper();
+};

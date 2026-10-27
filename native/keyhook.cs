@@ -3,6 +3,10 @@
 //
 // Dùng:  keyhook.exe <win> <ctrl> <alt> <shift> <vk>     (mỗi cờ là 0 hoặc 1, vk là mã phím ảo dạng số)
 // Khi đúng tổ hợp: nuốt phím, in "TRIGGER" ra stdout. Thoát khi stdin đóng (tiến trình cha chết).
+//
+// Chế độ ghi:   keyhook.exe record
+// Dùng để người dùng bấm thử tổ hợp cần gán: in "KEY <win> <ctrl> <alt> <shift> <vk>" (hoặc "CANCEL" khi bấm Esc)
+// và nuốt phím để Windows không thực thi tổ hợp đó (ví dụ Win+A mở Cài đặt nhanh).
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -27,7 +31,8 @@ static class KeyHook
 
     static bool needWin, needCtrl, needAlt, needShift;
     static uint key;
-    static bool swallowing;
+    static bool swallowing, record;
+    static uint swallowVk;
     static readonly HookProc proc = Callback; // giữ tham chiếu để GC không thu hồi
 
     static bool Down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
@@ -38,11 +43,61 @@ static class KeyHook
         return win == needWin && Down(0x11) == needCtrl && Down(0x12) == needAlt && Down(0x10) == needShift;
     }
 
+    static bool IsModifier(uint vk)
+    {
+        return vk == 0x10 || vk == 0x11 || vk == 0x12 || (vk >= 0xA0 && vk <= 0xA5) || vk == 0x5B || vk == 0x5C;
+    }
+
+    static void Say(string line)
+    {
+        Console.Out.WriteLine(line);
+        Console.Out.Flush();
+    }
+
+    static IntPtr RecordCallback(KBDLLHOOKSTRUCT k, int msg)
+    {
+        bool isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+        if (IsModifier(k.vk)) return IntPtr.Zero; // phím bổ trợ cứ để hệ thống xử lý
+        if (!isDown)
+        {
+            if (swallowing && k.vk == swallowVk) { swallowing = false; return (IntPtr)1; }
+            return IntPtr.Zero;
+        }
+        bool win = Down(0x5B) || Down(0x5C), ctrl = Down(0x11), alt = Down(0x12), shift = Down(0x10);
+        bool standalone = (k.vk >= 0x70 && k.vk <= 0x87) || k.vk == 0x2C || k.vk == 0x13 || k.vk == 0x91;
+        if (k.vk == 0x1B && !win && !ctrl && !alt && !shift)
+        {
+            if (!swallowing) { swallowing = true; swallowVk = k.vk; Say("CANCEL"); }
+            return (IntPtr)1;
+        }
+        if (win || ctrl || alt || shift || standalone)
+        {
+            if (!swallowing)
+            {
+                swallowing = true;
+                swallowVk = k.vk;
+                if (win)
+                {
+                    keybd_event(VK_MASK, 0, 0, OwnMark);
+                    keybd_event(VK_MASK, 0, 2, OwnMark);
+                }
+                Say("KEY " + (win ? 1 : 0) + " " + (ctrl ? 1 : 0) + " " + (alt ? 1 : 0) + " " + (shift ? 1 : 0) + " " + k.vk);
+            }
+            return (IntPtr)1;
+        }
+        return IntPtr.Zero; // gõ phím thường: bỏ qua
+    }
+
     static IntPtr Callback(int code, IntPtr wParam, IntPtr lParam)
     {
         if (code >= 0)
         {
             KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+            if (record && k.extra != OwnMark)
+            {
+                if (RecordCallback(k, wParam.ToInt32()) != IntPtr.Zero) return (IntPtr)1;
+                return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
+            }
             if (k.extra != OwnMark && k.vk == key)
             {
                 int msg = wParam.ToInt32();
@@ -75,12 +130,19 @@ static class KeyHook
     [STAThread]
     static int Main(string[] args)
     {
-        if (args.Length < 5) return 2;
-        needWin = args[0] == "1";
-        needCtrl = args[1] == "1";
-        needAlt = args[2] == "1";
-        needShift = args[3] == "1";
-        key = uint.Parse(args[4]);
+        if (args.Length >= 1 && args[0] == "record")
+        {
+            record = true;
+        }
+        else
+        {
+            if (args.Length < 5) return 2;
+            needWin = args[0] == "1";
+            needCtrl = args[1] == "1";
+            needAlt = args[2] == "1";
+            needShift = args[3] == "1";
+            key = uint.Parse(args[4]);
+        }
 
         // Tiến trình cha (Electron) thoát thì stdin đóng -> tự thoát để không treo hook.
         new Thread(() => { while (Console.In.ReadLine() != null) { } Environment.Exit(0); }) { IsBackground = true }.Start();

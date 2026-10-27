@@ -218,6 +218,15 @@ ipcMain.handle('copy-image', async (_e, bytes) => {
 
 ipcMain.handle('get-hotkey', () => hotkey);
 
+ipcMain.handle('record-hotkey', async () => {
+  try {
+    return await hotkeys.recordCombo();
+  } finally {
+    registerHotkey(hotkey); // bật lại phím tắt hiện tại; nếu có tổ hợp mới thì giao diện sẽ gọi set-hotkey ngay sau đó
+  }
+});
+ipcMain.handle('cancel-record-hotkey', () => hotkeys.cancelRecord());
+
 ipcMain.handle('get-settings', () => ({
   ...settings.all(),
   version: app.getVersion(),

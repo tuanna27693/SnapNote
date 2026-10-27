@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   copyImage: (bytes) => ipcRenderer.invoke('copy-image', bytes),
   getHotkey: () => ipcRenderer.invoke('get-hotkey'),
   setHotkey: (hotkey) => ipcRenderer.invoke('set-hotkey', hotkey),
+  recordHotkey: () => ipcRenderer.invoke('record-hotkey'),
+  cancelRecordHotkey: () => ipcRenderer.invoke('cancel-record-hotkey'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
   checkUpdate: () => ipcRenderer.invoke('check-update'),

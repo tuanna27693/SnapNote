@@ -53,6 +53,8 @@ dialog input#hotkey-input {
   color: var(--text); background: var(--panel-2);
   border: 1px solid var(--line); border-radius: 8px; font: 15px/1 "Segoe UI", sans-serif;
 }
+dialog input#hotkey-input { cursor: pointer; }
+dialog input#hotkey-input.recording { outline: 2px solid var(--accent); color: var(--muted); }
 dialog input#hotkey-input:focus { outline: 2px solid var(--accent); }
 .error { margin-top: 8px; min-height: 18px; color: #f87171; }
 .actions { display: flex; justify-content: flex-end; margin-top: 8px; }
