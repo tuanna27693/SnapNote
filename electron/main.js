@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import * as settings from './settings.js';
 import * as updates from './updates.js';
 import * as hotkeys from './hotkey.js';
+import * as recorder from './recorder.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const preload = path.join(root, 'electron', 'preload.cjs');
@@ -34,6 +35,48 @@ function applyLoginItem() {
 }
 
 const registerHotkey = (acc) => hotkeys.apply(acc, beginCapture);
+
+// ---------- Khay hệ thống ----------
+const trayIcon = () => nativeImage.createFromPath(path.join(root, 'assets', 'tray.png'));
+const trayRecIcon = () => nativeImage.createFromPath(path.join(root, 'assets', 'tray-rec.png'));
+let trayTimer = null;
+
+/** Thời gian đã ghi (không tính lúc tạm dừng). */
+const elapsed = (s) => s.elapsedMs + (s.resumedAt ? Date.now() - s.resumedAt : 0);
+
+const clock = (ms) => {
+  const sec = Math.floor(ms / 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(Math.floor(sec / 60))}:${p(sec % 60)}`;
+};
+
+function refreshTray() {
+  if (!tray) return;
+  const s = recorder.getState();
+  tray.setImage(s.recording ? trayRecIcon() : trayIcon());
+  tray.setToolTip(s.recording ? `SnapNote · ${s.paused ? 'Tạm dừng' : 'Đang ghi âm'} ${clock(elapsed(s))}` : 'SnapNote');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Chụp màn hình', click: beginCapture },
+    ...(s.recording
+      ? [
+        s.paused
+          ? { label: 'Tiếp tục ghi âm', click: () => recorder.resume() }
+          : { label: 'Tạm dừng ghi âm', click: () => recorder.pause() },
+        { label: 'Dừng và lưu ghi âm', click: () => recorder.stop() },
+      ]
+      : [{ label: 'Ghi âm', click: () => recorder.start() }]),
+    { label: 'Mở trình chỉnh sửa', click: showEditor },
+    { type: 'separator' },
+    { label: 'Thoát', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+function onRecState(s) {
+  clearInterval(trayTimer);
+  if (s.recording) trayTimer = setInterval(refreshTray, 1000);
+  refreshTray();
+  editor?.webContents.send('rec-state', s);
+}
 
 // ---------- Cửa sổ editor ----------
 function createEditor() {
@@ -264,6 +307,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
     await loadSettings();
+    recorder.init({ preload, root, onChange: onRecState });
     applyLoginItem(); // đồng bộ lại đường dẫn sau mỗi lần cập nhật
     updates.init((s) => editor?.webContents.send('update-status', s), showEditor);
     if (!registerHotkey(hotkey)) {
@@ -271,14 +315,8 @@ if (!app.requestSingleInstanceLock()) {
       registerHotkey(hotkey);
     }
 
-    tray = new Tray(nativeImage.createFromPath(path.join(root, 'assets', 'tray.png')));
-    tray.setToolTip('SnapNote');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Chụp màn hình', click: beginCapture },
-      { label: 'Mở trình chỉnh sửa', click: showEditor },
-      { type: 'separator' },
-      { label: 'Thoát', click: () => { quitting = true; app.quit(); } },
-    ]));
+    tray = new Tray(trayIcon());
+    refreshTray();
     tray.on('click', beginCapture);
 
     createEditor();
@@ -287,7 +325,16 @@ if (!app.requestSingleInstanceLock()) {
     for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, syncOverlayPool);
   });
 
-  app.on('before-quit', () => { quitting = true; });
+  // Đang ghi âm mà thoát app thì dừng và lưu file trước, tránh mất bản ghi.
+  let quitStopping = false;
+  app.on('before-quit', (e) => {
+    quitting = true;
+    if (recorder.isRecording() && !quitStopping) {
+      e.preventDefault();
+      quitStopping = true;
+      recorder.stop().finally(() => app.quit());
+    }
+  });
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     hotkeys.dispose();

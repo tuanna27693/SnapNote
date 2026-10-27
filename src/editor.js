@@ -127,6 +127,32 @@ async function chooseHotkey(combo) {
 }
 document.querySelectorAll('.presets button').forEach((b) => b.addEventListener('click', () => chooseHotkey(b.dataset.hotkey)));
 
+// ---------- Ghi âm ----------
+let recClock = null;
+function renderRec(s) {
+  clearInterval(recClock);
+  const btn = $('btn-rec');
+  const label = $('rec-label');
+  btn.classList.toggle('recording', s.recording);
+  if (!s.recording) {
+    label.textContent = 'Ghi âm';
+    return;
+  }
+  const tick = () => {
+    const ms = s.elapsedMs + (s.resumedAt ? Date.now() - s.resumedAt : 0);
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const p = (n) => String(n).padStart(2, '0');
+    label.textContent = `Dừng và lưu  ${p(Math.floor(sec / 60))}:${p(sec % 60)}${s.paused ? ' (tạm dừng)' : ''}`;
+  };
+  tick();
+  recClock = setInterval(tick, 1000);
+}
+$('btn-rec').addEventListener('click', () => api.recToggle());
+$('btn-open-rec').addEventListener('click', () => api.recOpenFolder());
+api.onRecState(renderRec);
+api.recInfo().then(renderRec);
+api.recGetDir().then((d) => ($('rec-dir').textContent = 'Lưu tại: ' + d));
+
 $('btn-new').addEventListener('click', () => api.startCapture());
 $('btn-settings').addEventListener('click', async () => {
   $('hotkey-error').textContent = '';

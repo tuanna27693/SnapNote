@@ -1,0 +1,25 @@
+* { box-sizing: border-box; margin: 0; }
+html, body { background: transparent; overflow: hidden; user-select: none; }
+#pill {
+  display: flex; align-items: center; gap: 8px; height: 44px; margin: 2px;
+  padding: 0 8px 0 14px; border-radius: 999px;
+  color: #e8e9f0; background: rgba(23, 24, 32, 0.95); border: 1px solid #34364a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  font: 600 14px/1 "Segoe UI", system-ui, sans-serif;
+  -webkit-app-region: drag;
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: blink 1.2s infinite; }
+.dot.paused { background: #8b8da3; animation: none; }
+@keyframes blink { 50% { opacity: 0.25; } }
+#time { min-width: 48px; margin-right: 2px; font-variant-numeric: tabular-nums; }
+#time.paused { color: #8b8da3; }
+svg { width: 16px; height: 16px; }
+button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; min-width: 30px; padding: 0 9px; border: 0; border-radius: 999px; cursor: pointer;
+  color: #e8e9f0; background: #2a2c37; font: inherit; font-size: 13px;
+  -webkit-app-region: no-drag;
+}
+button:hover { background: #3a3d4c; }
+button.stop { color: #fff; background: #ef4444; padding: 0 12px; }
+button.stop:hover { background: #f87171; }
