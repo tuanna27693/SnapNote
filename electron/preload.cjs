@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   copyImage: (bytes) => ipcRenderer.invoke('copy-image', bytes),
   getHotkey: () => ipcRenderer.invoke('get-hotkey'),
   setHotkey: (hotkey) => ipcRenderer.invoke('set-hotkey', hotkey),
+  snipStatus: () => ipcRenderer.invoke('snip-status'),
+  snipToggle: () => ipcRenderer.invoke('snip-toggle'),
   recordHotkey: () => ipcRenderer.invoke('record-hotkey'),
   cancelRecordHotkey: () => ipcRenderer.invoke('cancel-record-hotkey'),
   recChunk: (buf) => ipcRenderer.invoke('rec-chunk', buf),

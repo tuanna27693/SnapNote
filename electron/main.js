@@ -11,6 +11,7 @@ import * as settings from './settings.js';
 import * as updates from './updates.js';
 import * as hotkeys from './hotkey.js';
 import * as recorder from './recorder.js';
+import * as snipping from './snipping.js';
 
 // Giảm RAM: bỏ tiến trình GPU riêng (giao diện nhẹ, vẽ bằng CPU là đủ), dùng chung một tiến trình giao diện
 // cho mọi cửa sổ, và bật chế độ thiết bị yếu của Chromium (cache nhỏ hơn).
@@ -298,7 +299,7 @@ ipcMain.handle('check-update', () => updates.check(true));
 ipcMain.handle('download-update', () => updates.download());
 ipcMain.handle('install-update', () => { quitting = true; updates.install(); });
 
-ipcMain.handle('set-hotkey', async (_e, next) => {
+async function changeHotkey(next) {
   const prev = hotkey;
   if (!registerHotkey(next)) {
     registerHotkey(prev);
@@ -306,6 +307,45 @@ ipcMain.handle('set-hotkey', async (_e, next) => {
   }
   hotkey = next;
   await saveSettings();
+}
+
+ipcMain.handle('set-hotkey', (_e, next) => changeHotkey(next));
+
+// Nút "Dùng Win+Shift+S": tắt/bật lại Snipping Tool bằng chính sách hệ thống (cần UAC) rồi gán phím tương ứng.
+ipcMain.handle('snip-status', async () => ({ disabled: await snipping.isDisabled() }));
+
+ipcMain.handle('snip-toggle', async (e) => {
+  const wasDisabled = await snipping.isDisabled();
+  const disable = !wasDisabled;
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: [disable ? 'Tắt Snipping Tool' : 'Bật lại Snipping Tool', 'Hủy'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Snipping Tool',
+    message: disable
+      ? 'Tắt Snipping Tool của Windows để dùng Win+Shift+S cho SnapNote?'
+      : 'Bật lại Snipping Tool của Windows?',
+    detail: disable
+      ? 'SnapNote sẽ đặt chính sách DisableSnippingTool trong registry rồi chạy gpupdate /force. Việc này áp dụng cho cả máy (mọi tài khoản), tắt hẳn Snipping Tool và cần quyền quản trị: Windows sẽ hỏi xác nhận. Không cần khởi động lại máy. Bạn có thể bật lại bất cứ lúc nào trong Cài đặt.'
+      : 'SnapNote sẽ xóa chính sách DisableSnippingTool và chạy gpupdate /force; Win+Shift+S trở về Snipping Tool. Cần quyền quản trị: Windows sẽ hỏi xác nhận.'
+        + (hotkeys.isWinSnip(hotkey) ? ' Phím chụp của SnapNote sẽ được đặt lại về Ctrl+Shift+A.' : ''),
+  });
+  if (response !== 0) return { changed: false, disabled: wasDisabled };
+
+  const now = await snipping.setDisabled(disable);
+  hotkeys.setPreferNative(now);
+  if (now !== disable) {
+    return { changed: false, disabled: now, error: 'Chưa đổi được: bạn đã hủy hộp thoại xin quyền hoặc máy đang chặn thay đổi này.' };
+  }
+  try {
+    if (disable) await changeHotkey('Super+Shift+S');
+    else if (hotkeys.isWinSnip(hotkey)) await changeHotkey(DEFAULT_HOTKEY);
+  } catch (err) {
+    return { changed: true, disabled: now, error: String(err.message ?? err) };
+  }
+  return { changed: true, disabled: now };
 });
 
 // ---------- Khởi động ----------
@@ -320,6 +360,7 @@ if (!app.requestSingleInstanceLock()) {
     recorder.init({ preload, root, onChange: onRecState });
     applyLoginItem(); // đồng bộ lại đường dẫn sau mỗi lần cập nhật
     updates.init((s) => sendToEditor('update-status', s), showEditor);
+    hotkeys.setPreferNative(await snipping.isDisabled());
     if (!registerHotkey(hotkey)) {
       hotkey = DEFAULT_HOTKEY;
       registerHotkey(hotkey);

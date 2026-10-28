@@ -41,6 +41,35 @@ async function recordHotkey() {
 }
 $('hotkey-input').addEventListener('click', recordHotkey);
 
+// ---------- Dùng Win+Shift+S (tắt Snipping Tool của Windows) ----------
+function renderSnip(disabled) {
+  $('snip-status').textContent = disabled
+    ? 'Snipping Tool đang tắt: SnapNote dùng được Win+Shift+S.'
+    : 'Snipping Tool của Windows đang giữ Win+Shift+S.';
+  $('btn-snip').textContent = disabled ? 'Bật lại Snipping Tool' : 'Dùng Win+Shift+S cho SnapNote';
+}
+
+async function refreshSnip() {
+  renderSnip((await api.snipStatus()).disabled);
+}
+
+$('btn-snip').addEventListener('click', async () => {
+  const btn = $('btn-snip');
+  btn.disabled = true;
+  $('snip-error').textContent = '';
+  try {
+    const r = await api.snipToggle();
+    if (r.error) $('snip-error').textContent = r.error;
+    else if (r.changed) toast(r.disabled ? 'Đã tắt Snipping Tool, Win+Shift+S dùng cho SnapNote' : 'Đã bật lại Snipping Tool');
+  } catch (ex) {
+    $('snip-error').textContent = String(ex.message ?? ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  } finally {
+    btn.disabled = false;
+    await refreshSnip();
+    refreshHotkeyLabel();
+  }
+});
+
 // ---------- Khởi chạy cùng Windows & cập nhật ----------
 let version = '';
 let updateAction = null;
@@ -105,6 +134,7 @@ async function loadSettings() {
   $('opt-autoupdate').checked = s.autoCheckUpdates;
   $('startup-note').hidden = s.packaged;
   renderRecordConfig(s);
+  refreshSnip();
   renderUpdate(s.update);
 }
 

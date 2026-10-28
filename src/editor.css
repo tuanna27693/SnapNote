@@ -46,6 +46,9 @@ kbd {
 .page section { max-width: 520px; margin: 0 auto; padding: 16px 0; border-top: 1px solid var(--line); }
 .page section:first-child { border-top: 0; }
 .page h4 { margin-bottom: 4px; font-size: 13px; }
+.snip { margin-top: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.snip button { margin: 8px 0; background: var(--panel-2); border-color: var(--line); }
+.snip .error { margin-top: 0; min-height: 0; }
 .presets { display: flex; gap: 8px; margin: 8px 0; }
 .presets button { height: 28px; font-size: 12px; background: var(--panel-2); border-color: var(--line); }
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }

@@ -46,7 +46,13 @@
         <div class="presets">
           <button type="button" data-hotkey="Ctrl+Shift+A">Đặt lại Ctrl+Shift+A</button>
         </div>
-        <p class="muted small">Nhận cả phím Windows (Win), ví dụ Win+Shift+A. Tổ hợp Win+Shift+S của Snipping Tool không hỗ trợ.</p>
+        <p class="muted small">Nhận cả phím Windows (Win), ví dụ Win+Shift+A.</p>
+        <div class="snip">
+          <p id="snip-status" class="muted small"></p>
+          <button type="button" id="btn-snip"></button>
+          <p class="muted small">Win+Shift+S đang thuộc về Snipping Tool của Windows. Nút này tắt Snipping Tool (chính sách của cả máy, cần quyền quản trị) để SnapNote dùng được phím này; bấm lại để trả về cho Windows.</p>
+          <p id="snip-error" class="error"></p>
+        </div>
         <p id="hotkey-error" class="error"></p>
       </section>
 

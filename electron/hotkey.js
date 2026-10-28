@@ -50,6 +50,17 @@ function parse(acc) {
 }
 
 export const usesWinKey = (acc) => parse(acc).mods.has('win');
+export const isWinSnip = (acc) => {
+  const { mods, vk } = parse(acc);
+  return mods.size === 2 && mods.has('win') && mods.has('shift') && vk === 0x53;
+};
+
+// Khi Windows đã nhả Win+Shift+S (chính sách DisableSnippingTool) thì thử đăng ký phím tắt thường trước,
+// nhanh hơn trình phụ chặn phím; không được thì dùng trình phụ như cũ.
+let preferNative = false;
+export const setPreferNative = (v) => {
+  preferNative = !!v;
+};
 
 let helper = null;
 let stopping = false;
@@ -90,7 +101,14 @@ export function apply(acc, onTrigger) {
   globalShortcut.unregisterAll();
   stopHelper();
   restarts = 0;
-  if (usesWinKey(acc)) return startHelper(acc, onTrigger);
+  if (usesWinKey(acc)) {
+    if (preferNative && isWinSnip(acc)) {
+      try {
+        if (globalShortcut.register(acc, onTrigger)) return true;
+      } catch {}
+    }
+    return startHelper(acc, onTrigger);
+  }
   try {
     return globalShortcut.register(acc, onTrigger);
   } catch {
