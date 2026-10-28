@@ -5,10 +5,27 @@ import {
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import * as settings from './settings.js';
 import * as updates from './updates.js';
 import * as hotkeys from './hotkey.js';
 import * as recorder from './recorder.js';
+
+// Giảm RAM: bỏ tiến trình GPU riêng (giao diện nhẹ, vẽ bằng CPU là đủ), dùng chung một tiến trình giao diện
+// cho mọi cửa sổ, và bật chế độ thiết bị yếu của Chromium (cache nhỏ hơn).
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('renderer-process-limit', '1');
+app.commandLine.appendSwitch('enable-low-end-device-mode');
+
+// Ảnh chụp toàn màn hình rất lớn; ép dọn rác ngay sau khi chụp xong để RAM về mức nghỉ thay vì chờ GC tự chạy.
+v8.setFlagsFromString('--expose_gc');
+const collectGarbage = vm.runInNewContext('gc');
+let gcTimer = null;
+const releaseMemory = () => {
+  clearTimeout(gcTimer);
+  gcTimer = setTimeout(() => collectGarbage(), 800);
+};
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const preload = path.join(root, 'electron', 'preload.cjs');
@@ -75,10 +92,15 @@ function onRecState(s) {
   clearInterval(trayTimer);
   if (s.recording) trayTimer = setInterval(refreshTray, 1000);
   refreshTray();
-  editor?.webContents.send('rec-state', s);
+  sendToEditor('rec-state', s);
 }
 
-// ---------- Cửa sổ editor ----------
+// ---------- Cửa sổ chính ----------
+// Chỉ tồn tại khi người dùng mở: đóng cửa sổ là huỷ hẳn để trả RAM, app vẫn chạy ở khay.
+const sendToEditor = (channel, data) => {
+  if (editor && !editor.isDestroyed()) editor.webContents.send(channel, data);
+};
+
 function createEditor() {
   editor = new BrowserWindow({
     width: 560, height: 820, minWidth: 460, minHeight: 640,
@@ -90,29 +112,25 @@ function createEditor() {
   if (!app.isPackaged) {
     editor.webContents.on('console-message', (e) => console.log(`[editor:${e.level}] ${e.message}`));
   }
-  editor.once('ready-to-show', () => !startHidden && editor.show());
-  // Đóng cửa sổ chỉ ẩn xuống khay, không thoát app.
-  editor.on('close', (e) => {
-    if (!quitting) {
-      e.preventDefault();
-      editor.hide();
-    }
+  editor.once('ready-to-show', () => editor.show());
+  editor.on('closed', () => {
+    editor = null;
   });
 }
 
 function showEditor() {
-  if (!editor) return createEditor();
+  if (!editor || editor.isDestroyed()) return createEditor();
   if (editor.isMinimized()) editor.restore();
   editor.show();
   editor.focus();
 }
 
 // ---------- Chụp màn hình ----------
-// Mỗi màn hình có sẵn một cửa sổ overlay ẩn (đã nạp trang) nên bấm phím tắt là hiện gần như ngay:
-// chỉ còn chụp -> gửi ảnh thô -> hiện, không phải tạo cửa sổ hay mã hoá/giải mã PNG.
+// Overlay chỉ tồn tại trong lúc chụp: tạo song song với việc chụp màn hình (để nạp trang xong đúng lúc có ảnh)
+// rồi huỷ khi xong, nên lúc rảnh app không giữ tiến trình giao diện nào cho việc này.
 const dbg = (...a) => process.env.SNAP_DEBUG && console.log('[snap]', ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const pool = new Map(); // display.id -> { win, display }
+const overlays = new Map(); // display.id -> { win, display }
 let t0 = 0;
 let capturing = false;
 let focusWin = null;
@@ -128,32 +146,15 @@ function createOverlay(display) {
   win.loadFile(path.join(root, 'dist', 'overlay.html'));
   if (process.env.SNAP_DEBUG) win.webContents.on('console-message', (e) => dbg('overlay:', e.message));
   win.on('closed', () => {
-    if (pool.get(display.id)?.win === win) pool.delete(display.id);
+    if (overlays.get(display.id)?.win === win) overlays.delete(display.id);
   });
-  pool.set(display.id, { win, display });
-}
-
-/** Giữ đúng một overlay cho mỗi màn hình hiện có (gọi khi khởi động và khi cắm/rút màn hình). */
-function syncOverlayPool() {
-  const displays = screen.getAllDisplays();
-  const ids = new Set(displays.map((d) => d.id));
-  for (const [id, entry] of [...pool]) if (!ids.has(id)) entry.win.destroy();
-  for (const d of displays) {
-    const entry = pool.get(d.id);
-    if (!entry) createOverlay(d);
-    else {
-      entry.display = d;
-      if (!entry.win.isVisible()) entry.win.setBounds(d.bounds);
-    }
-  }
+  overlays.set(display.id, { win, display });
 }
 
 function closeOverlays() {
-  for (const { win } of pool.values()) {
-    if (win.isDestroyed() || !win.isVisible()) continue;
-    win.hide();
-    win.webContents.send('overlay-reset');
-  }
+  for (const { win } of [...overlays.values()]) if (!win.isDestroyed()) win.destroy();
+  overlays.clear();
+  releaseMemory();
 }
 
 const loaded = (win) =>
@@ -164,14 +165,14 @@ async function beginCapture() {
   capturing = true;
   t0 = Date.now();
   try {
-    const hadOverlay = [...pool.values()].some((e) => e.win.isVisible());
+    const hadOverlay = overlays.size > 0;
     closeOverlays();
     // Cửa sổ SnapNote giữ nguyên như mọi app khác, chụp thế nào thì ảnh ra thế đó.
     // Chỉ chờ overlay của lần chụp trước (nếu còn) biến mất khỏi khung hình.
     if (hadOverlay) await sleep(150);
 
-    syncOverlayPool();
     const displays = screen.getAllDisplays();
+    for (const d of displays) createOverlay(d); // cửa sổ ẩn, bắt đầu nạp trang ngay
     const size = displays.reduce(
       (m, d) => ({
         width: Math.max(m.width, Math.round(d.size.width * d.scaleFactor)),
@@ -185,7 +186,7 @@ async function beginCapture() {
     focusWin = null;
 
     for (const [i, d] of displays.entries()) {
-      const entry = pool.get(d.id);
+      const entry = overlays.get(d.id);
       const src = sources.find((s) => s.display_id === String(d.id)) ?? sources[i];
       if (!entry || !src) continue;
       let image = src.thumbnail;
@@ -195,7 +196,10 @@ async function beginCapture() {
       if (cur.width !== pw || cur.height !== ph) image = image.resize({ width: pw, height: ph, quality: 'best' });
       const { width, height } = image.getSize();
       await loaded(entry.win);
-      entry.win.webContents.send('overlay-capture', { width, height, bitmap: image.toBitmap() }); // BGRA
+      if (entry.win.isDestroyed()) continue;
+      // Thanh chọn chế độ (Chụp màn hình / Ghi âm) chỉ hiện trên màn hình đang có con trỏ.
+      const modes = { show: d.id === cursor.id, recording: recorder.isRecording() };
+      entry.win.webContents.send('overlay-capture', { width, height, bitmap: image.toBitmap(), modes }); // BGRA
       if (d.id === cursor.id) focusWin = entry.win;
     }
   } catch (e) {
@@ -208,10 +212,10 @@ async function beginCapture() {
 
 ipcMain.handle('start-capture', () => beginCapture());
 
-// Overlay vẽ xong ảnh thì mới hiện, tránh nháy khung đen/ảnh cũ.
+// Overlay vẽ xong ảnh thì mới hiện, tránh nháy khung đen.
 ipcMain.handle('overlay-drawn', (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  const entry = [...pool.values()].find((x) => x.win === win);
+  const entry = [...overlays.values()].find((x) => x.win === win);
   if (!entry) return;
   win.setBounds(entry.display.bounds); // đặt lại để tránh lệch khi màn hình khác DPI
   win.show();
@@ -220,6 +224,12 @@ ipcMain.handle('overlay-drawn', (e) => {
 });
 
 ipcMain.handle('cancel-selection', () => closeOverlays());
+
+// Người dùng chọn "Ghi âm" ở thanh chế độ: bỏ phiên chụp và bắt đầu ghi âm.
+ipcMain.handle('switch-to-recording', async () => {
+  closeOverlays();
+  if (!recorder.isRecording()) await recorder.start();
+});
 
 // ---------- Cửa sổ chỉnh sửa đầy đủ (mở từ nút "Chỉnh sửa" trên overlay) ----------
 const editPayloads = new Map(); // webContents.id -> { image, annotations }
@@ -309,7 +319,7 @@ if (!app.requestSingleInstanceLock()) {
     await loadSettings();
     recorder.init({ preload, root, onChange: onRecState });
     applyLoginItem(); // đồng bộ lại đường dẫn sau mỗi lần cập nhật
-    updates.init((s) => editor?.webContents.send('update-status', s), showEditor);
+    updates.init((s) => sendToEditor('update-status', s), showEditor);
     if (!registerHotkey(hotkey)) {
       hotkey = DEFAULT_HOTKEY;
       registerHotkey(hotkey);
@@ -319,10 +329,7 @@ if (!app.requestSingleInstanceLock()) {
     refreshTray();
     tray.on('click', beginCapture);
 
-    createEditor();
-
-    syncOverlayPool();
-    for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, syncOverlayPool);
+    if (!startHidden) createEditor(); // khởi chạy cùng Windows: không mở cửa sổ nào, chỉ nằm ở khay
   });
 
   // Đang ghi âm mà thoát app thì dừng và lưu file trước, tránh mất bản ghi.

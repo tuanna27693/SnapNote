@@ -20,6 +20,9 @@ body.editing { cursor: default; }
   position: fixed; z-index: 10; width: max-content; max-width: calc(100vw - 20px);
   flex-wrap: wrap; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
+#modebar { position: fixed; z-index: 30; top: 14px; left: 50%; transform: translateX(-50%); width: max-content; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
+body.editing #modebar { display: none; }
+#modebar:not([hidden]) ~ #hint { top: 76px; }
 #hint {
   position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
   padding: 8px 16px; border-radius: 999px;

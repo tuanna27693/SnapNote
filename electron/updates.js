@@ -1,11 +1,11 @@
 import { app, Notification } from 'electron';
-import electronUpdater from 'electron-updater';
 import * as settings from './settings.js';
 
-const { autoUpdater } = electronUpdater;
+// electron-updater khá nặng (nhiều thư viện đi kèm) nên chỉ nạp khi thật sự cần kiểm tra cập nhật.
 const FIRST_CHECK_MS = 15_000;
 const INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+let autoUpdater = null;
 let status = { state: app.isPackaged ? 'idle' : 'dev' };
 let notify = () => {};
 let openApp = () => {};
@@ -28,9 +28,10 @@ function friendly(e) {
 
 export const getStatus = () => status;
 
-export function init(onStatus, onOpenApp) {
-  notify = onStatus;
-  openApp = onOpenApp;
+async function updater() {
+  if (autoUpdater) return autoUpdater;
+  const mod = await import('electron-updater');
+  autoUpdater = (mod.default ?? mod).autoUpdater;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -47,7 +48,12 @@ export function init(onStatus, onOpenApp) {
   autoUpdater.on('download-progress', (p) => push({ state: 'downloading', percent: Math.round(p.percent) }));
   autoUpdater.on('update-downloaded', (info) => push({ state: 'ready', version: info.version }));
   autoUpdater.on('error', (e) => push({ state: 'error', message: friendly(e) }));
+  return autoUpdater;
+}
 
+export function init(onStatus, onOpenApp) {
+  notify = onStatus;
+  openApp = onOpenApp;
   applySchedule();
 }
 
@@ -65,7 +71,7 @@ export async function check(isManual = true) {
   if (['checking', 'downloading', 'ready'].includes(status.state)) return;
   manual = isManual;
   try {
-    await autoUpdater.checkForUpdates();
+    await (await updater()).checkForUpdates();
   } catch (e) {
     push({ state: 'error', message: friendly(e) });
   }
@@ -74,10 +80,10 @@ export async function check(isManual = true) {
 export async function download() {
   if (status.state !== 'available') return;
   try {
-    await autoUpdater.downloadUpdate();
+    await (await updater()).downloadUpdate();
   } catch (e) {
     push({ state: 'error', message: friendly(e) });
   }
 }
 
-export const install = () => autoUpdater.quitAndInstall();
+export const install = () => autoUpdater?.quitAndInstall();

@@ -8,13 +8,18 @@ const sel = $('sel');
 const sizeLabel = $('size');
 const host = $('stage-host');
 const toolbar = $('toolbar');
+const modebar = $('modebar');
+let modesShow = false; // màn hình này có hiện thanh chọn chế độ không
 
 const ctx = bg.getContext('2d');
 let start = null;
 let phase = 'select'; // 'select' (đang kéo chọn vùng) | 'edit' (đã chọn, đang chú thích)
 
 // Cửa sổ overlay được tạo sẵn và ẩn; mỗi lần chụp, main gửi ảnh thô (BGRA) sang đây để vẽ rồi mới hiện.
-api.onOverlayCapture(({ width, height, bitmap }) => {
+api.onOverlayCapture(({ width, height, bitmap, modes }) => {
+  modesShow = !!modes?.show;
+  $('mode-rec').disabled = !!modes?.recording;
+  $('mode-rec-label').textContent = modes?.recording ? 'Đang ghi âm' : 'Ghi âm';
   reset();
   const src = new Uint32Array(bitmap.buffer, bitmap.byteOffset, width * height);
   const pixels = new Uint8ClampedArray(width * height * 4);
@@ -59,6 +64,7 @@ function reset() {
   host.hidden = true;
   toolbar.hidden = true;
   document.body.classList.remove('dragging', 'editing');
+  modebar.hidden = !modesShow;
   clearImage();
 }
 
@@ -111,8 +117,11 @@ reselectBtn.addEventListener('click', reset);
 // Chuyển ảnh gốc + chú thích đã vẽ sang cửa sổ chỉnh sửa đầy đủ, rồi đóng overlay.
 editBtn.addEventListener('click', async () => api.openEditor(await getState()));
 
+$('mode-rec').addEventListener('click', () => api.switchToRecording());
+$('mode-close').addEventListener('click', close);
+
 window.addEventListener('mousedown', (e) => {
-  if (phase !== 'select') return;
+  if (phase !== 'select' || e.target.closest('#modebar')) return;
   if (e.button === 2) return close();
   if (e.button !== 0) return;
   start = { x: e.clientX, y: e.clientY };
@@ -137,5 +146,6 @@ window.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('keydown', (e) => {
   if (phase !== 'select') return; // trong chế độ chú thích, annotator tự xử lý phím
   if (e.key === 'Escape') close();
+  if ((e.key === 'r' || e.key === 'R') && modesShow && !$('mode-rec').disabled) api.switchToRecording();
   if (e.key === 'Enter') beginEdit({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
 });
