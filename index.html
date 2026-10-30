@@ -41,16 +41,16 @@
     <div id="view-settings" class="page" hidden>
       <section>
         <h4>Phím tắt chụp màn hình</h4>
-        <p class="muted small">Bấm vào ô rồi nhấn tổ hợp phím mong muốn (ví dụ Ctrl+Shift+A, Win+Shift+A, hoặc PrintScreen).</p>
+        <p class="muted small">Bấm vào ô rồi nhấn tổ hợp phím mong muốn (ví dụ Ctrl+Shift+A, Win+Shift+F9 hoặc PrintScreen).</p>
         <input id="hotkey-input" readonly />
         <div class="presets">
           <button type="button" data-hotkey="Ctrl+Shift+A">Đặt lại Ctrl+Shift+A</button>
         </div>
-        <p class="muted small">Nhận cả phím Windows (Win), ví dụ Win+Shift+A.</p>
+        <p class="muted small">Nhận cả phím Windows (Win), nhưng tổ hợp nào Windows đang giữ riêng thì không gán được.</p>
         <div class="snip">
           <p id="snip-status" class="muted small"></p>
           <button type="button" id="btn-snip"></button>
-          <p class="muted small">Win+Shift+S đang thuộc về Snipping Tool của Windows. Nút này tắt Snipping Tool (chính sách của cả máy, cần quyền quản trị) để SnapNote dùng được phím này; bấm lại để trả về cho Windows.</p>
+          <p class="muted small">Win+Shift+S đang thuộc về Snipping Tool của Windows. Nút này tắt Snipping Tool (chính sách của cả máy, cần quyền quản trị) để SnapNote dùng được phím này; bấm lại để trả về cho Windows. Sau khi tắt, nếu Windows chưa nhả phím thì hãy đăng xuất rồi đăng nhập lại.</p>
           <p id="snip-error" class="error"></p>
         </div>
         <p id="hotkey-error" class="error"></p>

@@ -1,6 +1,6 @@
 import {
-  app, BrowserWindow, ClipboardItem, Menu, Tray, clipboard, desktopCapturer, dialog,
-  globalShortcut, ipcMain, nativeImage, screen,
+  app, BrowserWindow, ClipboardItem, Menu, Notification, Tray, clipboard, desktopCapturer, dialog,
+  globalShortcut, ipcMain, nativeImage, powerMonitor, screen,
 } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -12,6 +12,7 @@ import * as updates from './updates.js';
 import * as hotkeys from './hotkey.js';
 import * as recorder from './recorder.js';
 import * as snipping from './snipping.js';
+import { log } from './log.js';
 
 // Giảm RAM: bỏ tiến trình GPU riêng (giao diện nhẹ, vẽ bằng CPU là đủ), dùng chung một tiến trình giao diện
 // cho mọi cửa sổ, và bật chế độ thiết bị yếu của Chromium (cache nhỏ hơn).
@@ -44,7 +45,7 @@ async function loadSettings() {
   hotkey = settings.get('hotkey') || DEFAULT_HOTKEY;
 }
 
-const saveSettings = () => settings.set('hotkey', hotkey).catch(() => {});
+const saveSettings = () => settings.set('hotkey', hotkey).catch((e) => log('lưu cài đặt lỗi:', e));
 
 // Chỉ đăng ký khi đã đóng gói; ở chế độ dev sẽ trỏ nhầm vào electron.exe.
 function applyLoginItem() {
@@ -52,7 +53,14 @@ function applyLoginItem() {
   app.setLoginItemSettings({ openAtLogin: !!settings.get('launchAtStartup'), args: ['--hidden'] });
 }
 
-const registerHotkey = (acc) => hotkeys.apply(acc, beginCapture);
+const registerHotkey = (acc) => {
+  const ok = hotkeys.apply(acc, () => {
+    log('phím tắt kích hoạt:', acc);
+    beginCapture();
+  });
+  log('đăng ký phím tắt', acc, ok ? 'thành công' : 'THẤT BẠI');
+  return ok;
+};
 
 // ---------- Khay hệ thống ----------
 const trayIcon = () => nativeImage.createFromPath(path.join(root, 'assets', 'tray.png'));
@@ -134,6 +142,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const overlays = new Map(); // display.id -> { win, display }
 let t0 = 0;
 let capturing = false;
+let capturingSince = 0;
+let captureRun = 0;
+const STUCK_AFTER_MS = 10_000;
 let focusWin = null;
 
 function createOverlay(display) {
@@ -158,13 +169,40 @@ function closeOverlays() {
   releaseMemory();
 }
 
-const loaded = (win) =>
-  win.webContents.isLoading() ? new Promise((r) => win.webContents.once('did-finish-load', r)) : Promise.resolve();
+function withTimeout(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} quá ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const loaded = (win) => {
+  if (win.isDestroyed()) return Promise.reject(new Error('Cửa sổ chụp đã bị đóng'));
+  if (!win.webContents.isLoading()) return Promise.resolve();
+  return withTimeout(new Promise((r) => win.webContents.once('did-finish-load', r)), 5000, 'Nạp cửa sổ chụp');
+};
+
+function notifyCaptureError(e) {
+  if (!Notification.isSupported()) return;
+  new Notification({ title: 'SnapNote không chụp được màn hình', body: String(e?.message ?? e).slice(0, 200) }).show();
+}
 
 async function beginCapture() {
-  if (capturing) return;
+  if (capturing) {
+    // Phiên chụp trước kẹt quá lâu (ví dụ chờ chụp màn hình mãi không xong) thì bỏ nó để lần bấm này chạy được.
+    if (Date.now() - capturingSince < STUCK_AFTER_MS) {
+      log('bỏ qua: đang có một phiên chụp');
+      return;
+    }
+    log('phiên chụp trước kẹt quá', STUCK_AFTER_MS, 'ms, đặt lại');
+    closeOverlays();
+  }
+  const run = ++captureRun;
   capturing = true;
+  capturingSince = Date.now();
   t0 = Date.now();
+  log('bắt đầu chụp');
   try {
     const hadOverlay = overlays.size > 0;
     closeOverlays();
@@ -181,7 +219,7 @@ async function beginCapture() {
       }),
       { width: 1, height: 1 },
     );
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+    const sources = await withTimeout(desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size }), 6000, 'Chụp màn hình');
     dbg('getSources done', Date.now() - t0, 'ms');
     const cursor = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     focusWin = null;
@@ -203,11 +241,14 @@ async function beginCapture() {
       entry.win.webContents.send('overlay-capture', { width, height, bitmap: image.toBitmap(), modes }); // BGRA
       if (d.id === cursor.id) focusWin = entry.win;
     }
+    log('chụp xong, đã gửi ảnh cho', overlays.size, 'màn hình trong', Date.now() - t0, 'ms');
   } catch (e) {
     console.error('Chụp thất bại:', e);
+    log('chụp THẤT BẠI:', e);
     closeOverlays();
+    notifyCaptureError(e);
   } finally {
-    capturing = false;
+    if (run === captureRun) capturing = false;
   }
 }
 
@@ -271,15 +312,6 @@ ipcMain.handle('copy-image', async (_e, bytes) => {
 
 ipcMain.handle('get-hotkey', () => hotkey);
 
-ipcMain.handle('record-hotkey', async () => {
-  try {
-    return await hotkeys.recordCombo();
-  } finally {
-    registerHotkey(hotkey); // bật lại phím tắt hiện tại; nếu có tổ hợp mới thì giao diện sẽ gọi set-hotkey ngay sau đó
-  }
-});
-ipcMain.handle('cancel-record-hotkey', () => hotkeys.cancelRecord());
-
 ipcMain.handle('get-settings', () => ({
   ...settings.all(),
   version: app.getVersion(),
@@ -301,6 +333,7 @@ ipcMain.handle('install-update', () => { quitting = true; updates.install(); });
 
 async function changeHotkey(next) {
   const prev = hotkey;
+  log('đổi phím tắt', prev, '->', next);
   if (!registerHotkey(next)) {
     registerHotkey(prev);
     throw new Error('Không đăng ký được phím tắt này (không hợp lệ hoặc đã bị app khác chiếm).');
@@ -335,15 +368,28 @@ ipcMain.handle('snip-toggle', async (e) => {
   if (response !== 0) return { changed: false, disabled: wasDisabled };
 
   const now = await snipping.setDisabled(disable);
-  hotkeys.setPreferNative(now);
+  log('đổi chính sách Snipping Tool: muốn', disable ? 'tắt' : 'bật', '-> hiện tại', now ? 'đang tắt' : 'đang bật');
   if (now !== disable) {
     return { changed: false, disabled: now, error: 'Chưa đổi được: bạn đã hủy hộp thoại xin quyền hoặc máy đang chặn thay đổi này.' };
   }
-  try {
-    if (disable) await changeHotkey('Super+Shift+S');
-    else if (hotkeys.isWinSnip(hotkey)) await changeHotkey(DEFAULT_HOTKEY);
-  } catch (err) {
-    return { changed: true, disabled: now, error: String(err.message ?? err) };
+  if (disable) {
+    try {
+      await changeHotkey('Super+Shift+S');
+    } catch {
+      // Windows có thể chỉ nhả phím sau khi đăng xuất/đăng nhập lại: nhớ lựa chọn để lần mở app sau tự dùng.
+      await settings.set('hotkey', 'Super+Shift+S');
+      return {
+        changed: true,
+        disabled: now,
+        error: 'Đã tắt Snipping Tool nhưng Windows chưa nhả phím Win+Shift+S. Hãy đăng xuất rồi đăng nhập lại, SnapNote sẽ tự dùng Win+Shift+S. Trong lúc này phím chụp vẫn là ' + hotkey.replace(/Super/g, 'Win') + '.',
+      };
+    }
+  } else if (hotkeys.isWinSnip(hotkey) || hotkeys.isWinSnip(settings.get('hotkey'))) {
+    try {
+      await changeHotkey(DEFAULT_HOTKEY);
+    } catch (err) {
+      return { changed: true, disabled: now, error: String(err.message ?? err) };
+    }
   }
   return { changed: true, disabled: now };
 });
@@ -360,16 +406,32 @@ if (!app.requestSingleInstanceLock()) {
     recorder.init({ preload, root, onChange: onRecState });
     applyLoginItem(); // đồng bộ lại đường dẫn sau mỗi lần cập nhật
     updates.init((s) => sendToEditor('update-status', s), showEditor);
-    hotkeys.setPreferNative(await snipping.isDisabled());
+    log('khởi động', app.getVersion(), 'phím tắt đã lưu:', hotkey);
     if (!registerHotkey(hotkey)) {
+      // Không đăng ký được (ví dụ Windows còn giữ Win+Shift+S): tạm dùng phím mặc định, giữ nguyên lựa chọn đã lưu để thử lại lần sau.
+      const wanted = hotkey;
       hotkey = DEFAULT_HOTKEY;
       registerHotkey(hotkey);
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'SnapNote',
+          body: `Không đăng ký được phím ${wanted.replace(/Super/g, 'Win')}, tạm dùng ${DEFAULT_HOTKEY}.`,
+        }).show();
+      }
     }
 
     tray = new Tray(trayIcon());
     refreshTray();
     tray.on('click', beginCapture);
 
+    // Sau khi máy ngủ dậy hoặc mở khóa, việc chụp màn hình dang dở có thể không bao giờ hoàn tất: dọn để lần bấm sau chạy lại.
+    for (const ev of ['resume', 'unlock-screen']) {
+      powerMonitor.on(ev, () => {
+        log('sự kiện hệ thống:', ev, '- đặt lại phiên chụp');
+        closeOverlays();
+        capturing = false;
+      });
+    }
     if (!startHidden) createEditor(); // khởi chạy cùng Windows: không mở cửa sổ nào, chỉ nằm ở khay
   });
 

@@ -3,4 +3,3 @@ dist/
 release/
 *.log
 .claude/
-native/keyhook.exe

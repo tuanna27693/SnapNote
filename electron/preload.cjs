@@ -15,8 +15,6 @@ contextBridge.exposeInMainWorld('api', {
   setHotkey: (hotkey) => ipcRenderer.invoke('set-hotkey', hotkey),
   snipStatus: () => ipcRenderer.invoke('snip-status'),
   snipToggle: () => ipcRenderer.invoke('snip-toggle'),
-  recordHotkey: () => ipcRenderer.invoke('record-hotkey'),
-  cancelRecordHotkey: () => ipcRenderer.invoke('cancel-record-hotkey'),
   recChunk: (buf) => ipcRenderer.invoke('rec-chunk', buf),
   recInfo: () => ipcRenderer.invoke('rec-info'),
   recPause: () => ipcRenderer.invoke('rec-pause'),

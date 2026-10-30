@@ -18,28 +18,34 @@ async function refreshHotkeyLabel() {
   $('hotkey-input').value = hk;
 }
 
-// Ghi phím tắt ở mức hệ thống (trình phụ keyhook) vì Windows nuốt các tổ hợp có phím Win
-// nên trang web không nhận được; ghi bằng hook thì bấm Win+bất kỳ phím nào cũng nhận.
-let recording = false;
-async function recordHotkey() {
-  if (recording) return;
-  recording = true;
-  const input = $('hotkey-input');
-  input.classList.add('recording');
-  input.value = 'Nhấn tổ hợp phím… (Esc để hủy)';
-  $('hotkey-error').textContent = '';
-  try {
-    const combo = await api.recordHotkey();
-    if (combo) await chooseHotkey(combo);
-  } catch (ex) {
-    $('hotkey-error').textContent = String(ex.message ?? ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-  } finally {
-    recording = false;
-    input.classList.remove('recording');
-    refreshHotkeyLabel();
-  }
+// Ghi phím tắt: bấm thử tổ hợp trong ô. Tổ hợp mà Windows giữ riêng (ví dụ Win+Shift+S) không tới được đây.
+function comboFromEvent(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return null;
+  const mods = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  let key = e.code;
+  if (key.startsWith('Key')) key = key.slice(3);
+  else if (key.startsWith('Digit')) key = key.slice(5);
+  else if (key.startsWith('Arrow')) key = key.slice(5);
+  else if (key === 'Escape') key = 'Esc';
+  const standalone = /^(F\d{1,2}|PrintScreen|Pause|ScrollLock)$/.test(key);
+  if (!mods.length && !standalone) return { error: 'Cần kèm Ctrl / Alt / Shift / Win (hoặc dùng phím F1–F24, PrintScreen).' };
+  return { combo: [...mods, key].join('+') };
 }
-$('hotkey-input').addEventListener('click', recordHotkey);
+
+$('hotkey-input').addEventListener('keydown', async (e) => {
+  e.preventDefault();
+  const r = comboFromEvent(e);
+  if (!r) return;
+  if (r.error) {
+    $('hotkey-error').textContent = r.error;
+    return;
+  }
+  await chooseHotkey(r.combo);
+});
 
 // ---------- Dùng Win+Shift+S (tắt Snipping Tool của Windows) ----------
 function renderSnip(disabled) {
@@ -219,7 +225,6 @@ function showView(name) {
   $('btn-back').hidden = !settings;
   $('btn-settings').hidden = settings;
   $('page-title').textContent = settings ? 'Cài đặt' : 'SnapNote';
-  if (!settings) api.cancelRecordHotkey(); // rời trang thì dừng ghi phím tắt đang chờ
 }
 
 $('btn-back').addEventListener('click', () => showView('home'));
@@ -229,7 +234,7 @@ $('btn-settings').addEventListener('click', async () => {
   showView('settings');
 });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('view-settings').hidden && !recording) showView('home');
+  if (e.key === 'Escape' && !$('view-settings').hidden && document.activeElement !== $('hotkey-input')) showView('home');
 });
 
 refreshHotkeyLabel();
